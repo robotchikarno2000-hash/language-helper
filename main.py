@@ -1,5 +1,6 @@
 import json
 import shutil
+import string
 import time
 import tkinter as tk
 from datetime import datetime
@@ -21,8 +22,10 @@ keyboard_controller = Controller()
 
 def load_words():
     """
-    Загружает слова из words.json.
-    Если файла нет или он повреждён, возвращает пустой список.
+    Загружает слова из файла words.json.
+
+    Если файла нет, возвращает пустой список.
+    Если файл повреждён, возвращает пустой список.
     """
     if not WORDS_FILE.exists():
         return []
@@ -50,7 +53,7 @@ def backup_words_file():
 
 def save_words(words):
     """
-    Сохраняет слова в words.json.
+    Сохраняет слова в файл words.json.
     """
     backup_words_file()
 
@@ -60,14 +63,21 @@ def save_words(words):
 
 def normalize_word(word):
     """
-    Очищает слово.
+    Очищает слово:
+    - убирает пробелы;
+    - переводит в нижний регистр;
+    - убирает знаки препинания по краям.
     """
-    return word.strip().lower()
+    word = word.strip().lower()
+    word = word.strip(string.punctuation)
+    return word
 
 
 def translate_word(word):
     """
     Переводит английское слово на русский.
+
+    Если перевод не сработал, возвращает пустую строку.
     """
     try:
         translation = GoogleTranslator(source="en", target="ru").translate(word)
@@ -83,7 +93,9 @@ def translate_word(word):
 
 def get_definition(word):
     """
-    Получает английскую definition через Free Dictionary API.
+    Получает английское определение через Free Dictionary API.
+
+    Если определение не найдено, возвращает пустую строку.
     """
     url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}"
 
@@ -94,6 +106,7 @@ def get_definition(word):
             return ""
 
         data = response.json()
+
         definition = data[0]["meanings"][0]["definitions"][0]["definition"]
 
         if definition is None:
@@ -121,7 +134,10 @@ def word_already_exists(words, word):
 
 def create_word_card(word, example=""):
     """
-    Создаёт карточку слова.
+    Создаёт карточку слова:
+    - получает перевод;
+    - получает definition;
+    - добавляет дату.
     """
     translation = translate_word(word)
     definition = get_definition(word)
@@ -140,7 +156,10 @@ def create_word_card(word, example=""):
 def add_word_to_storage(word, example=""):
     """
     Добавляет слово в words.json.
-    Возвращает success и message.
+
+    Возвращает:
+    - success: True или False
+    - message: сообщение для пользователя
     """
     word = normalize_word(word)
 
@@ -163,39 +182,37 @@ def add_word_to_storage(word, example=""):
 def copy_selected_text():
     """
     Копирует выделенный текст через Ctrl+C и возвращает его.
+
+    Важно:
+    перед копированием очищает буфер обмена,
+    чтобы случайно не взять старый текст.
     """
     try:
-        old_clipboard = pyperclip.paste()
+        pyperclip.copy("")
     except Exception:
-        old_clipboard = ""
+        return ""
+
+    time.sleep(0.1)
 
     with keyboard_controller.pressed(Key.ctrl):
         keyboard_controller.press("c")
         keyboard_controller.release("c")
 
-    time.sleep(0.2)
+    time.sleep(0.5)
 
     try:
         selected_text = pyperclip.paste()
     except Exception:
-        selected_text = ""
-
-    selected_text = selected_text.strip()
-
-    if selected_text == "":
         return ""
 
-    if selected_text == old_clipboard:
-        return selected_text
-
-    return selected_text
+    return selected_text.strip()
 
 
 class LanguageHelperApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Language Helper")
-        self.root.geometry("850x650")
+        self.root.geometry("900x700")
 
         self.words = []
 
@@ -206,21 +223,21 @@ class LanguageHelperApp:
         title_label = tk.Label(
             self.root,
             text="Language Helper",
-            font=("Arial", 20, "bold")
+            font=("Arial", 22, "bold")
         )
         title_label.pack(pady=10)
 
         hotkey_label = tk.Label(
             self.root,
-            text="Ctrl + Alt + W — добавить выделенное слово | Ctrl + Alt + L — показать/скрыть окно",
-            font=("Arial", 10)
+            text="F8 — добавить выделенное слово | F9 — показать/скрыть окно",
+            font=("Arial", 11)
         )
         hotkey_label.pack(pady=5)
 
         input_frame = tk.Frame(self.root)
         input_frame.pack(pady=10)
 
-        self.word_entry = tk.Entry(input_frame, width=30, font=("Arial", 12))
+        self.word_entry = tk.Entry(input_frame, width=35, font=("Arial", 12))
         self.word_entry.grid(row=0, column=0, padx=5)
 
         add_button = tk.Button(
@@ -233,7 +250,7 @@ class LanguageHelperApp:
         search_frame = tk.Frame(self.root)
         search_frame.pack(pady=5)
 
-        self.search_entry = tk.Entry(search_frame, width=30, font=("Arial", 12))
+        self.search_entry = tk.Entry(search_frame, width=35, font=("Arial", 12))
         self.search_entry.grid(row=0, column=0, padx=5)
 
         search_button = tk.Button(
@@ -252,7 +269,7 @@ class LanguageHelperApp:
 
         self.words_listbox = tk.Listbox(
             self.root,
-            width=60,
+            width=70,
             height=14,
             font=("Arial", 12)
         )
@@ -286,8 +303,8 @@ class LanguageHelperApp:
 
         self.details_text = tk.Text(
             self.root,
-            width=90,
-            height=12,
+            width=95,
+            height=13,
             font=("Arial", 11),
             wrap="word"
         )
@@ -327,14 +344,22 @@ class LanguageHelperApp:
     def add_word_from_hotkey(self):
         """
         Добавляет слово, выделенное в другой программе.
+
+        Это отладочная версия:
+        она печатает в терминал, что происходит.
         """
+        print("HOTKEY WORKS: F8 was pressed")
+
         selected_text = copy_selected_text()
+        print(f"Copied text: '{selected_text}'")
+
         word = normalize_word(selected_text)
+        print(f"Normalized word: '{word}'")
 
         if word == "":
             messagebox.showwarning(
                 "Ничего не выделено",
-                "Выдели одно английское слово и нажми Ctrl + Alt + W."
+                "Выдели одно английское слово и нажми F8."
             )
             return
 
@@ -345,9 +370,13 @@ class LanguageHelperApp:
             )
             return
 
+        print("Adding word to storage...")
+
         success, message = add_word_to_storage(word)
 
         self.refresh_word_list()
+
+        print(message)
 
         if success:
             messagebox.showinfo("Слово добавлено", message)
@@ -356,7 +385,11 @@ class LanguageHelperApp:
 
     def search_words(self):
         """
-        Ищет слова.
+        Ищет слова по:
+        - слову;
+        - переводу;
+        - definition;
+        - example.
         """
         query = normalize_word(self.search_entry.get())
 
@@ -393,7 +426,7 @@ class LanguageHelperApp:
 
     def show_selected_word_details(self, event=None):
         """
-        Показывает подробности выбранного слова.
+        Показывает подробную информацию о выбранном слове.
         """
         selection = self.words_listbox.curselection()
 
@@ -456,13 +489,13 @@ class LanguageHelperApp:
 
     def hide_window(self):
         """
-        Скрывает окно.
+        Скрывает окно программы.
         """
         self.root.withdraw()
 
     def show_window(self):
         """
-        Показывает окно.
+        Показывает окно программы.
         """
         self.root.deiconify()
         self.root.lift()
@@ -471,7 +504,7 @@ class LanguageHelperApp:
 
     def toggle_window(self):
         """
-        Показывает или скрывает окно.
+        Показывает или скрывает окно программы.
         """
         if self.root.state() == "withdrawn":
             self.show_window()
@@ -482,6 +515,9 @@ class LanguageHelperApp:
 def start_hotkey_listener(app):
     """
     Запускает глобальные горячие клавиши.
+
+    F8 — добавить выделенное слово.
+    F9 — показать или скрыть окно.
     """
 
     def add_selected_word():
@@ -491,8 +527,8 @@ def start_hotkey_listener(app):
         app.root.after(0, app.toggle_window)
 
     hotkeys = keyboard.GlobalHotKeys({
-        "<ctrl>+<alt>+w": add_selected_word,
-        "<ctrl>+<alt>+l": toggle_window
+        "<f8>": add_selected_word,
+        "<f9>": toggle_window
     })
 
     hotkeys.start()
@@ -506,8 +542,8 @@ def main():
 
     hotkey_listener = start_hotkey_listener(app)
 
-    # Если хочешь, чтобы окно сразу скрывалось при запуске,
-    # раскомментируй следующую строку:
+    # Пока отлаживаем программу, окно лучше оставлять видимым.
+    # Когда всё заработает, можно раскомментировать строку ниже:
     # root.withdraw()
 
     try:
